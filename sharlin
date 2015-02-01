@@ -1,0 +1,119 @@
+#!/bin/sh
+
+main() {
+  set -o errexit
+  set -o nounset
+
+  if [ $# -eq 0 ]; then
+    usage
+    exit 1
+  fi
+
+  local command=$1
+  shift
+
+  case $command in
+    add|list|clear)
+      $command "$@"
+      ;;
+
+    *)
+      usage
+      exit 1
+      ;;
+  esac
+}
+
+usage() {
+  local utility=${0##*/}
+  cat << EOF
+usage: $utility add file
+       $utility list
+       $utility clear
+EOF
+}
+
+add() {
+  if [ $# -eq 0 ] || [ ! -f "$1"  ]; then
+    usage
+    exit 1
+  fi
+
+  setup
+
+  local key=`random_string 15`
+  local key_dir=$WEB_PATH/$key
+  mkdir -p "$key_dir"
+
+  cp "$1" "$key_dir/"
+
+  local file_name=`basename "$1"`
+  local key_url="$HOST/$key/$(urlencode "$file_name")"
+
+  echo $key_url
+  
+  if which pbcopy > /dev/null; then
+    echo $key_url | pbcopy
+  fi
+}
+
+list() {
+  setup
+
+  local root_path="$WEB_PATH/"
+  local root_path_length=${#root_path}
+  find_shared_files | while read file; do
+    local url_path=${file:$root_path_length}
+    local key_url="$HOST/$(urlencode "$url_path")"
+    echo $key_url
+  done
+}
+
+clear() {
+  setup
+
+  if [ -d "$WEB_PATH" ]; then
+    rm -rf "$WEB_PATH/"*
+  fi
+}
+
+setup() {
+  read_config
+  mount_if_not
+}
+
+read_config() {
+  CONFIG_FILE=~/.sharlin.conf
+
+  if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
+  fi
+
+  if [ -z "$HOST" ] || [ -z "$SHARE_URL" ] || [ -z "$SHARE_MOUNT" ] || [ -z "$SHARE_WEB" ]; then
+    echo "Please set up HOST, SHARE_URL, SHARE_MOUNT, SHARE_WEB variables in $CONFIG_FILE"
+    exit 1
+  fi
+
+  WEB_PATH=$SHARE_MOUNT/$SHARE_WEB
+}
+
+mount_if_not() {
+  if [ ! -d "$SHARE_MOUNT" ]; then
+    mkdir -p "$SHARE_MOUNT"
+    mount_afp "$SHARE_URL" "$SHARE_MOUNT"
+  fi
+}
+
+random_string() {
+  cat /dev/urandom | strings | grep -o '[[:lower:][:digit:]]' | head -n $1 | tr -d '\n'; echo
+}
+
+urlencode() {
+  perl -MURI::file -e 'print URI::file->new($ARGV[0]);' "$1"
+}
+
+find_shared_files() {
+  find "$WEB_PATH" -type f -not -name .DS_Store -not -name ._*
+}
+
+main "$@"

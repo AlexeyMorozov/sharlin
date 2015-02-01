@@ -1,0 +1,4 @@
+HOST="https://your.domain"
+SHARE_URL="afp://192.168.0.2/Public"
+SHARE_MOUNT="/Volumes/Public"
+SHARE_WEB="www"
